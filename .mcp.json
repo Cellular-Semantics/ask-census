@@ -4,6 +4,11 @@
       "type": "http",
       "url": "http://www.ebi.ac.uk/ols4/api/mcp",
       "tools": ["*"]
+    },
+    "grebi": {
+      "type": "http",
+      "url": "https://wwwdev.ebi.ac.uk/kg/api/v1/mcp",
+      "tools": ["*"]
     }
   }
 }
