@@ -115,6 +115,7 @@ Stop relaxing once you find a combination with >0 cells. Present the user with a
 - For direct execution: do pre-flight size estimate (for `get_anndata()`), execute, show preview, auto-save to `outputs/`.
 - **Always filter zero-count categories** in any breakdown or summary (see Step 5 warning).
 - **Size warning**: If broad `get_anndata()` with no gene filter, warn the user. Suggest `get_obs()` first.
+- After saving the slice, suggest: `Run /enrich-slice <saved_path> to add author cell type annotations.`
 
 Always list resolved terms in output:
 ```

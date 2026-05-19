@@ -61,8 +61,9 @@ fi
 # ---- Install ----------------------------------------------------------------
 
 info "Installing dependencies (editable)..."
-.venv/bin/pip install --upgrade pip -q
-.venv/bin/pip install -e ".[dev]" -q
+.venv/bin/python -m ensurepip --upgrade 2>/dev/null || true
+.venv/bin/python -m pip install --upgrade pip -q
+.venv/bin/python -m pip install -e ".[dev]" -q
 ok "Dependencies installed"
 
 # ---- Verify imports ----------------------------------------------------------
@@ -71,9 +72,13 @@ info "Verifying imports..."
 .venv/bin/python -c "
 from cxg_query_enhancer import enhance
 from gene_resolver import resolve_genes, build_var_value_filter
+from bitmap_manifest_join_lib import run_join, load_manifest_from_dict, load_bitmaps_from_dict
+from enrich_slice_runner import main
 print('  cxg_query_enhancer.enhance ......... OK')
 print('  gene_resolver.resolve_genes ........ OK')
 print('  gene_resolver.build_var_value_filter OK')
+print('  bitmap_manifest_join_lib.run_join .. OK')
+print('  enrich_slice_runner.main ........... OK')
 "
 ok "All imports verified"
 
