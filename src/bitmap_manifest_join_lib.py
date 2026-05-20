@@ -314,6 +314,20 @@ def build_author_annotation_columns(membership: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(records).sort_values("soma_joinid", kind="stable").reset_index(drop=True)
 
 
+def build_doi_column(membership: pd.DataFrame) -> pd.DataFrame:
+    """Return a DataFrame with soma_joinid and kb_publication_doi (|‑joined unique DOIs per cell)."""
+    if len(membership) == 0:
+        return pd.DataFrame(columns=["soma_joinid", "kb_publication_doi"])
+    doi_series = (
+        membership[membership["dataset_publication_doi"].notna()]
+        .groupby("soma_joinid")["dataset_publication_doi"]
+        .agg(lambda vals: "|".join(dict.fromkeys(vals)))
+        .rename("kb_publication_doi")
+        .reset_index()
+    )
+    return doi_series
+
+
 def build_cluster_summary(membership: pd.DataFrame) -> pd.DataFrame:
     if len(membership) == 0:
         return pd.DataFrame(columns=[
@@ -366,6 +380,12 @@ def run_join(
         author_cols_df = author_cols_df.set_index("soma_joinid")
         for col in author_cols_df.columns:
             cell_level[col] = cell_level["soma_joinid"].map(author_cols_df[col])
+
+    doi_df = build_doi_column(membership)
+    if len(doi_df) > 0:
+        cell_level["kb_publication_doi"] = cell_level["soma_joinid"].map(
+            doi_df.set_index("soma_joinid")["kb_publication_doi"]
+        )
 
     cluster_summary = build_cluster_summary(membership)
 
