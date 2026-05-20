@@ -6,12 +6,17 @@
 import cellxgene_census
 from cxg_query_enhancer import enhance
 
+# Pin to an explicit census build — keeps results reproducible and ensures
+# soma_joinids align with the bitmap service (which uses a fixed version).
+# Replace "stable" with a specific date string (e.g. "2025-11-08") if needed.
+CENSUS_VERSION = cellxgene_census.get_census_version_description("stable")["release_build"]
+
 obs_filter = enhance(
     "is_primary_data == True and [obs_value_filter]",
     organism="[homo_sapiens or mus_musculus]"
 )
 
-with cellxgene_census.open_soma(census_version="latest") as census:
+with cellxgene_census.open_soma(census_version=CENSUS_VERSION) as census:
     obs_df = cellxgene_census.get_obs(
         census,
         organism="[Homo sapiens or Mus musculus]",
@@ -41,12 +46,14 @@ for col in ["cell_type", "tissue", "disease"]:
 import cellxgene_census
 from cxg_query_enhancer import enhance
 
+CENSUS_VERSION = cellxgene_census.get_census_version_description("stable")["release_build"]
+
 obs_filter = enhance(
     "is_primary_data == True and [obs_value_filter]",
     organism="[homo_sapiens or mus_musculus]"
 )
 
-with cellxgene_census.open_soma(census_version="latest") as census:
+with cellxgene_census.open_soma(census_version=CENSUS_VERSION) as census:
     adata = cellxgene_census.get_anndata(
         census,
         organism="[Homo sapiens or Mus musculus]",
@@ -72,12 +79,14 @@ If no genes were specified, omit the `var_value_filter` parameter entirely.
 import cellxgene_census
 from cxg_query_enhancer import enhance
 
+CENSUS_VERSION = cellxgene_census.get_census_version_description("stable")["release_build"]
+
 obs_filter = enhance(
     "is_primary_data == True and [obs_value_filter]",
     organism="[homo_sapiens or mus_musculus]"
 )
 
-with cellxgene_census.open_soma(census_version="latest") as census:
+with cellxgene_census.open_soma(census_version=CENSUS_VERSION) as census:
     hvg_df = cellxgene_census.get_highly_variable_genes(
         census,
         organism="[Homo sapiens or Mus musculus]",
@@ -105,7 +114,7 @@ from cxg_query_enhancer import enhance
 
 obs_filter = enhance("is_primary_data == True and [obs_value_filter]", organism="[homo_sapiens or mus_musculus]")
 
-with cellxgene_census.open_soma(census_version="latest") as census:
+with cellxgene_census.open_soma(census_version=CENSUS_VERSION) as census:
     obs_df = cellxgene_census.get_obs(
         census,
         organism="[Homo sapiens or Mus musculus]",

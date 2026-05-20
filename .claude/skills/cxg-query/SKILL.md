@@ -26,6 +26,7 @@ Extract from the user's request:
 - **Tissue type**: tissue, organoid, cell culture
 - **Organism**: human (default) or mouse — **if a development stage or age is mentioned but organism is not, you MUST ask the user to confirm species before proceeding**. Many stage labels are shared between human (HsapDv) and mouse (MmusDv) but mean very different things (e.g. `"6-month-old stage"` = infant in human, mature adult in mouse). Use `AskUserQuestion` to confirm.
 - **Genes**: gene names or Ensembl IDs
+- **Census version**: Extract if the user specifies one (e.g. `"2025-11-08"`, `"version 2025-09-15"`). Default: `"stable"`. Never pass the alias `"stable"` or `"latest"` directly to generated code — always resolve to the actual build-date string first (see Step 5), so the output is reproducible and the census version aligns with the bitmap service.
 - **API mode** (infer from intent):
   | Clues | Mode |
   |---|---|
@@ -83,8 +84,15 @@ Syntax: `==` for single values, `in [...]` for multiple, `and`/`or` to combine, 
 from cxg_query_enhancer import enhance
 import cellxgene_census
 
+# Resolve the version alias to an explicit build-date string.
+# Use the version the user specified, or "stable" as default.
+# Never leave "stable"/"latest" in generated code — pin the resolved string.
+_requested = "stable"  # replace with user-specified version if provided
+CENSUS_VERSION = cellxgene_census.get_census_version_description(_requested)["release_build"]
+print(f"Census version: {CENSUS_VERSION}")
+
 obs_filter = enhance("is_primary_data == True and ...", organism="homo_sapiens")
-with cellxgene_census.open_soma(census_version="latest") as census:
+with cellxgene_census.open_soma(census_version=CENSUS_VERSION) as census:
     obs_df = cellxgene_census.get_obs(census, organism="Homo sapiens",
         value_filter=obs_filter,
         column_names=["cell_type", "tissue", "disease"])
@@ -117,11 +125,12 @@ Stop relaxing once you find a combination with >0 cells. Present the user with a
 - **Size warning**: If broad `get_anndata()` with no gene filter, warn the user. Suggest `get_obs()` first.
 - After saving the slice, suggest: `Run /enrich-slice <saved_path> to add author cell type annotations.`
 
-Always list resolved terms in output:
+Always list resolved terms in output, including the pinned census version:
 ```
 Resolved terms:
 - Cell type: T cell (CL:0000084)
 - Tissue: lung (UBERON:0002048)
+- Census version: 2025-11-08 (resolved from "stable")
 ```
 
 ---
