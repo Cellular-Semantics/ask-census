@@ -11,11 +11,13 @@ cell type annotations from the CL Knowledge Base.
 
 Flow:
 1. Read unique `cell_type` values from the slice
-2. Query the CL KB graph → cluster metadata manifest
-3. Fetch roaring bitmaps for each cluster → `soma_joinid` sets
+2. POST to the graph query service → cluster metadata manifest
+3. POST to the bitmap query service for each cluster → `soma_joinid` sets
 4. Intersect bitmaps with the slice → join author labels back by `soma_joinid`
 
-Requires the `cl_kb` MCP server (graph service on `localhost:8000`, bitmap service on `localhost:8001`).
+Requires two backend services, configured via environment variables:
+- `GRAPH_QUERY_SERVICE_URL` (default: `http://localhost:8011`)
+- `BITMAP_QUERY_SERVICE_URL` (default: `http://localhost:8010`)
 
 ---
 
@@ -68,15 +70,31 @@ print(f"Unique cell types in slice: {len(cell_types)}")
 print(json.dumps(cell_types))
 ```
 
-### Step 3: Query the graph for matching cluster metadata
+### Step 3: Query the graph service for matching cluster metadata
 
-Call the `query_clusters` tool from the `cl_kb` MCP server:
-- `cell_labels` = the list from Step 2
+POST directly to the graph query service. Run via Bash:
 
-The result is a manifest dict with shape:
+```python
+import json, os, requests
+
+GRAPH_URL = os.getenv("GRAPH_QUERY_SERVICE_URL", "http://localhost:8011")
+cell_types = <list from Step 2>
+
+resp = requests.post(
+    f"{GRAPH_URL}/graph/query",
+    json={"cell_labels": cell_types},
+    timeout=30,
+)
+resp.raise_for_status()
+manifest = resp.json()
+
+print(f"Clusters found: {manifest.get('cluster_count', 0)}")
+```
+
+The manifest has this shape:
 ```json
 {
-  "cluster_count": 121,
+  "cluster_count": 5,
   "clusters": {
     "http://example.org/...": {
       "node_iri": "...",
@@ -93,57 +111,63 @@ The result is a manifest dict with shape:
 
 If `cluster_count == 0` or `clusters` is empty, tell the user no matching clusters were found and stop.
 
-### Step 4: Extract bitmap lookup keys
+### Step 4: Fetch bitmaps and run the join
 
-Run via Bash with the manifest dict pasted in:
-
-```python
-import json
-
-manifest_dict = <paste query_clusters result>
-
-keys = [
-    c["bitmap_lookup_key"]
-    for c in manifest_dict.get("clusters", {}).values()
-    if c.get("bitmap_lookup_key")
-]
-print(f"Clusters in manifest : {manifest_dict.get('cluster_count', 0)}")
-print(f"Bitmap lookup keys   : {len(keys)}")
-print(json.dumps(keys))
-```
-
-### Step 5: Fetch bitmaps
-
-Call the `fetch_bitmaps_bulk` tool from the `cl_kb` MCP server:
-- `cluster_iris` = the key list from Step 4
-- `census_version` = `"latest"`
-
-Each successful result contains a `bitmap_base64` — a roaring bitmap encoding the `soma_joinid` set for that cluster in the given census version.
-
-### Step 6: Write temp files and run the join
-
-Run via Bash from the ask-census directory. All paths must be absolute.
+Fetch bitmaps for each cluster concurrently, write all intermediate files, and run the join — all in one Bash step. Use the `CENSUS_VERSION` resolved in `/cxg-query` (the same version the slice was fetched with). All paths must be absolute.
 
 ```python
-import json, subprocess
+import json, os, requests, subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-slice_path = Path("<absolute path from Step 1>")
-out_dir    = slice_path.parent   # outputs land alongside the slice
-stem       = slice_path.stem     # e.g. "contractile_cell_normal_all_obs_20260519_114656"
+BITMAP_URL    = os.getenv("BITMAP_QUERY_SERVICE_URL", "http://localhost:8010")
+CENSUS_VERSION = "<version used to fetch the slice, e.g. 2025-11-08>"
 
-manifest_dict = <paste query_clusters result>
-bitmaps_dict  = <paste fetch_bitmaps_bulk result>
+slice_path    = Path("<absolute path from Step 1>")
+out_dir       = slice_path.parent
+stem          = slice_path.stem
+manifest      = <manifest dict from Step 3>
 
-manifest_json = out_dir / f"{stem}_manifest.json"
-bitmaps_json  = out_dir / f"{stem}_bitmaps.json"
-output_prefix = out_dir / f"{stem}_enriched"
+# --- fetch bitmaps ---
+keys = [
+    c["bitmap_lookup_key"]
+    for c in manifest.get("clusters", {}).values()
+    if c.get("bitmap_lookup_key")
+]
 
-manifest_json.write_text(json.dumps(manifest_dict, ensure_ascii=False))
-bitmaps_json.write_text(json.dumps(bitmaps_dict, ensure_ascii=False))
-print(f"Manifest : {manifest_json}")
-print(f"Bitmaps  : {bitmaps_json}")
+def _fetch_one(iri: str) -> dict:
+    try:
+        resp = requests.post(
+            f"{BITMAP_URL}/bitmap/query",
+            json={"operation": "lookup", "clusters": [iri], "census_version": CENSUS_VERSION},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return {"bitmap_lookup_key": iri, "ok": True, "response": resp.json()}
+    except Exception as exc:
+        return {"bitmap_lookup_key": iri, "ok": False, "error": str(exc)}
 
+with ThreadPoolExecutor() as pool:
+    results = list(pool.map(_fetch_one, keys))
+
+success = sum(1 for r in results if r["ok"])
+bitmaps = {
+    "count": len(keys),
+    "success_count": success,
+    "failure_count": len(keys) - success,
+    "results": results,
+}
+print(f"Bitmaps: {success}/{len(keys)} succeeded")
+
+# --- write intermediate files ---
+manifest_json  = out_dir / f"{stem}_manifest.json"
+bitmaps_json   = out_dir / f"{stem}_bitmaps.json"
+output_prefix  = out_dir / f"{stem}_enriched"
+
+manifest_json.write_text(json.dumps(manifest, ensure_ascii=False))
+bitmaps_json.write_text(json.dumps(bitmaps, ensure_ascii=False))
+
+# --- run join ---
 cmd = [
     ".venv/bin/python", "src/enrich_slice_runner.py",
     "--obs-file",       str(slice_path),
@@ -157,7 +181,7 @@ if result.returncode != 0:
     print("STDERR:", result.stderr)
 ```
 
-### Step 7: Report results
+### Step 5: Report results
 
 After the join script finishes, summarise for the user:
 
@@ -166,17 +190,17 @@ After the join script finishes, summarise for the user:
 - **Matched clusters**: number of clusters that overlapped the slice
 - **Author columns added**: list the dynamic annotation columns (e.g. `author_cell_type`, `author_cluster_label`, ...)
 - **Output files**:
-  - `{stem}_enriched__enriched.h5ad` or `.parquet` — main enriched slice
+  - `{stem}_enriched__enriched.parquet` or `.h5ad` — main enriched slice
   - `{stem}_enriched__cluster_summary.csv` — per-cluster match counts
   - `{stem}_enriched__membership.csv` — full many-to-many join table
 
-If `matched_cells == 0`, tell the user the bitmaps did not overlap the slice (mismatched census version is the most common cause).
+If `matched_cells == 0`, tell the user the bitmaps did not overlap the slice (mismatched census version is the most common cause — ensure the same version was used for both the slice fetch and the bitmap query).
 
 ---
 
 ## Edge cases
 
 - **No clusters from graph**: manifest is empty → skip bitmap fetch, tell user.
-- **All bitmaps failed**: `success_count == 0` in the bitmap result → skip join, report errors.
+- **All bitmaps failed**: `success_count == 0` → skip join, report errors. Check that `BITMAP_QUERY_SERVICE_URL` is reachable and `CENSUS_VERSION` matches a version the bitmap service has indexed.
 - **Zero overlap**: join runs cleanly but `matched_cells == 0` → output is still written, just without author columns.
 - **Multiple cluster hits per cell**: handled automatically — values are deduplicated and joined with `|`.

@@ -4,14 +4,6 @@
       "type": "http",
       "url": "http://www.ebi.ac.uk/ols4/api/mcp",
       "tools": ["*"]
-    },
-    "cl_kb": {
-      "command": "/Users/ub2/.local/bin/uv",
-      "args": ["run", "--directory", "/Users/ub2/github/CL_KB/cl_kb_mcp", "cl-kb-mcp"],
-      "env": {
-        "GRAPH_QUERY_SERVICE_URL": "http://localhost:8011",
-        "BITMAP_QUERY_SERVICE_URL": "http://localhost:8010"
-      }
     }
   }
 }

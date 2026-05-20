@@ -7,18 +7,17 @@ Run `./setup.sh` (or `make setup`) to create a virtual environment and install d
 
 The `/cxg-query` skill handles query generation. The `ontology-term-lookup` agent resolves biological terms via OLS4 MCP.
 
-## MCP services — local environment only
+## CL KB backend services (`/enrich-slice` only)
 
-The `cl_kb` MCP server depends on two backend services that are **not yet deployed**:
+`/enrich-slice` calls two HTTP services directly — no MCP layer. `/cxg-query` does not use them.
 
-| Service | Env var | Current value |
+| Service | Env var | Default |
 |---|---|---|
 | Graph query service | `GRAPH_QUERY_SERVICE_URL` | `http://localhost:8011` |
 | Bitmap query service | `BITMAP_QUERY_SERVICE_URL` | `http://localhost:8010` |
 
 Both are currently exposed via SSH tunnels to a development machine.
-To use `/enrich-slice`, start the tunnels before launching Claude Code.
+Set the env vars (or rely on the defaults) and start the tunnels before running `/enrich-slice`.
 
 **TODO**: deploy both services to a stable URL (e.g. internal k8s or Cloud Run)
-and update `.mcp.json` env vars accordingly — at that point the tunnel step
-can be removed.
+and update the env vars — at that point the tunnel step can be removed.
