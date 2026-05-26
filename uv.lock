@@ -189,6 +189,7 @@ dependencies = [
     { name = "anndata", version = "0.11.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "anndata", version = "0.12.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "cellxgene-census" },
+    { name = "certifi" },
     { name = "cxg-query-enhancer" },
     { name = "pandas" },
     { name = "pyroaring" },
@@ -203,6 +204,7 @@ dev = [
 requires-dist = [
     { name = "anndata", specifier = ">=0.10.0" },
     { name = "cellxgene-census", specifier = ">=1.0.0" },
+    { name = "certifi", specifier = ">=2026.1.4" },
     { name = "cxg-query-enhancer", specifier = ">=0.2.3" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "pyroaring", specifier = ">=1.0.3" },
