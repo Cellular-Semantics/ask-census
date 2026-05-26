@@ -138,11 +138,11 @@ def probe(url: str, stats: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
     stats["n"] = 0
     stats["calls"] = 0
 
-    fs = fsspec.filesystem("https")
+    fs, path = fsspec.core.url_to_fs(url)
     t0 = time.time()
     _push_byte_counter(stats)
     try:
-        with fs.open(url, "rb", block_size=64 * 1024) as f:
+        with fs.open(path, "rb", block_size=64 * 1024) as f:
             with h5py.File(f, "r") as h:
                 if "obs" not in h:
                     return {

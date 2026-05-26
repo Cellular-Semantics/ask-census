@@ -74,12 +74,12 @@ def pull_full_column(
     stats["n"] = 0
     stats["calls"] = 0
 
-    fs = fsspec.filesystem("https")
+    fs, path = fsspec.core.url_to_fs(url)
     cols: Dict[str, np.ndarray] = {}
 
     _push_byte_counter(stats)
     try:
-        with fs.open(url, "rb", block_size=64 * 1024) as f:
+        with fs.open(path, "rb", block_size=64 * 1024) as f:
             with h5py.File(f, "r") as h:
                 obs = h["obs"]
                 joinid_node = obs["observation_joinid"]
