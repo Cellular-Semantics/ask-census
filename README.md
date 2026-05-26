@@ -16,10 +16,18 @@ Then open the project in your AI coding agent and ask for what you need:
 Get me female T cells in lung tissue
 ```
 
-In Claude Code you can also use the `/cxg-query` skill shorthand:
+In Claude Code you can also use skill shorthands:
 ```
 /cxg-query female T cells in lung tissue
 ```
+
+To enrich the resulting slice with author-level cell type annotations from the CL Knowledge Base:
+```
+/enrich-slice outputs/female_t_cell_lung_20260519_120000.h5ad
+```
+
+> **Note** — enrichment requires the CL Knowledge Base services running locally.
+> See [Author annotation enrichment](#author-annotation-enrichment) below.
 
 ## Examples
 
@@ -56,14 +64,70 @@ Configs are synced automatically: `setup.sh` copies Claude Code skills and agent
 
 ## How It Works
 
+### Census query (`/cxg-query`)
+
 1. **You describe** the data you want in plain English
 2. **The agent** parses your request into biological entities (cell types, tissues, diseases, genes, assays, stages)
 3. **OLS4 MCP** resolves entities to ontology terms (CL, Uberon, MONDO, HsapDv/MmusDv)
 4. **cxg-query-enhancer** expands terms to include all subtypes via Ubergraph, filtered to those present in Census
 5. **gene_resolver** maps gene names to Ensembl IDs (with disambiguation for ambiguous names)
-6. **cellxgene-census** retrieves the matching single-cell data
+6. **cellxgene-census** retrieves the matching single-cell data and saves it to `outputs/` as `.h5ad` or `.parquet`
 
 All queries automatically filter to `is_primary_data == True` to avoid duplicate cells across overlapping datasets.
+
+### Author annotation enrichment (`/enrich-slice`)
+
+After a Census query you can enrich the saved slice with author-level cell type annotations sourced from published datasets in the CL Knowledge Base:
+
+1. **Read cell types** — unique `cell_type` values are extracted from the slice obs
+2. **Graph lookup** — `cl_kb` MCP queries the Neo4j knowledge graph for clusters matching those cell types, returning per-cluster metadata (author label columns, synonym columns, dataset provenance)
+3. **Bitmap fetch** — roaring bitmaps encoding the `soma_joinid` set for each cluster are fetched from the bitmap service
+4. **Join** — bitmaps are intersected with the slice's `soma_joinid` set; matched cells get new author annotation columns (e.g. `author_cell_type`, `author_cluster_label`) joined back onto `obs`
+5. **Output** — enriched `.h5ad` or `.parquet` written alongside the original slice, plus a cluster summary CSV and a full membership CSV
+
+## Author annotation enrichment
+
+### Prerequisites
+
+Enrichment requires three additional services:
+
+| Service | Default URL | Purpose |
+|---|---|---|
+| CL Knowledge Base graph | `http://localhost:8000` | Graph query → cluster manifest |
+| Bitmap query service | `http://localhost:8001` | Roaring bitmap lookup per cluster |
+| `cl_kb` MCP server | configured in `.mcp.json` | Bridge between Claude and the services |
+
+The `cl_kb` MCP server is pre-configured in `.mcp.json`. Set the service URLs via environment variables if they differ from the defaults:
+
+```bash
+GRAPH_QUERY_SERVICE_URL=http://localhost:8000
+BITMAP_QUERY_SERVICE_URL=http://localhost:8001
+```
+
+### Usage
+
+Run a Census query first, then enrich:
+
+```
+/cxg-query pericytes from frontal cortex, normal
+# → saves outputs/pericyte_frontal_cortex_normal_..._obs_....h5ad
+# → suggests: /enrich-slice outputs/pericyte_frontal_cortex_normal_....h5ad
+
+/enrich-slice outputs/pericyte_frontal_cortex_normal_....h5ad
+```
+
+Or just `/enrich-slice` with no argument to pick up the most recently saved slice automatically.
+
+### What gets added
+
+The enriched slice gains:
+- `matched_cluster_count` — how many clusters each cell matched
+- Dynamic author annotation columns, e.g.:
+  - `author_cell_type` — the author's cell type label for that cluster
+  - `author_cluster_label` — the author's cluster ID (e.g. `"17:Peri"`)
+  - Any additional synonym columns declared in the dataset (vary by study)
+
+Cells that matched no clusters are preserved unchanged.
 
 ## Features
 
@@ -81,24 +145,29 @@ All queries automatically filter to `is_primary_data == True` to avoid duplicate
 
 ```
 ask-census/
-├── .claude/                    # Claude Code config (master for shared files)
+├── .claude/                         # Claude Code config (master for shared files)
 │   ├── agents/ontology-term-lookup.md
-│   └── skills/cxg-query/
-│       ├── SKILL.md
-│       └── references/         # grammar, templates, census field lookups
-├── .codex/                     # OpenAI Codex config (synced by setup.sh)
+│   └── skills/
+│       ├── cxg-query/               # /cxg-query skill
+│       │   ├── SKILL.md
+│       │   └── references/          # grammar, templates, census field lookups
+│       └── enrich-slice/            # /enrich-slice skill
+│           └── SKILL.md
+├── .codex/                          # OpenAI Codex config (synced by setup.sh)
 ├── .github/copilot-instructions.md
-├── .mcp.json                   # OLS4 MCP server
+├── .mcp.json                        # OLS4 + cl_kb MCP servers
 ├── src/
-│   ├── gene_resolver.py        # Gene name → Ensembl ID resolution
+│   ├── gene_resolver.py             # Gene name → Ensembl ID resolution
+│   ├── bitmap_manifest_join_lib.py  # Bitmap-manifest join logic (used by enrich-slice)
+│   ├── enrich_slice_runner.py       # CLI entry point for enrich-slice
 │   └── refresh_census_fields.py
-├── data/                       # Obsolete stage term lookups
+├── data/                            # Obsolete stage term lookups
 ├── tests/
-├── examples/                   # Worked examples
-├── planning/                   # Roadmap
-├── outputs/                    # Query results (git-ignored)
-├── setup.sh                    # One-command setup
-├── Makefile                    # setup, test, check-mcp, clean
+├── examples/                        # Worked examples
+├── planning/                        # Roadmap
+├── outputs/                         # Query results and enriched slices (git-ignored)
+├── setup.sh                         # One-command setup
+├── Makefile                         # setup, test, check-mcp, clean
 └── pyproject.toml
 ```
 
