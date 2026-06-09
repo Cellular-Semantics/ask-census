@@ -116,26 +116,24 @@ Add `assay`, `suspension_type`, and `donor_id` to the default `column_names` / `
 
 These require further investigation and may not be feasible or practical.
 
-### Author cell type annotations
+### Author cell type annotations — IMPLEMENTED (2026-05-25)
 
-**Problem**: The census only contains harmonized CL ontology labels. Original author-provided cell type annotations (e.g. `author_cell_type`) are only available in the source H5AD files hosted on CELLxGENE Discover.
+Available via the `author-annotations` skill — see [`.claude/skills/author-annotations/SKILL.md`](../.claude/skills/author-annotations/SKILL.md) and the supporting `author_annotations` Python module under `src/`.
 
-**Current state of knowledge**:
-- Census `get_obs()` returns ~25 standardized columns; no author annotations
-- The Discover REST API (`/v1/collections/{id}`, `/v1/datasets/{id}`) returns dataset-level metadata only, not cell-level obs
-- Author annotations live in the individual H5AD files, downloadable via `cellxgene_census.download_source_h5ad(dataset_id)`
-- `gget cellxgene` with `meta_only=True` may retrieve obs metadata from Discover datasets (needs testing)
+**Approach.** A cheaper variant of "targeted H5AD obs-only download" (proposal 1 below): instead of full file download + backed-mode obs read, we use **HTTPS range-reads** of the CELLxGENE datasets CDN to pull just the obs schema + a 20-row sample per column (median ~9 MB / ~13 s per dataset cross-region, independent of file size — a 14 GB h5ad costs the same order of bytes as a 138 MB one). Author cell-type columns are then identified by the `author-category-picker` sub-agent, full values are pulled for the picks, and assembled into a long-format Parquet table (and optionally written back into an h5ad's obs).
 
-**Possible approaches (ranked by feasibility)**:
-1. **Targeted H5AD obs-only download** -- After a census query, identify the unique `dataset_id`s in results, download only those H5ADs, read just `.obs` (using `anndata.read_h5ad(path, backed='r')`), and join author annotations back. Avoids loading expression matrices into memory but still requires full file downloads.
-2. **gget meta_only** -- Test whether `gget.cellxgene(meta_only=True)` returns author annotation columns and whether it can be filtered to specific datasets. If so, this could be a lighter-weight path.
-3. **Pre-built author annotation index** -- Build and cache a mapping of `(dataset_id, cell_barcode) -> author_cell_type` for commonly queried datasets. High upfront cost but fast at query time.
-4. **Lobby for census schema change** -- Request that CZI add an `author_cell_type` column to the census obs table. Low probability but highest value.
+**Benchmark.** Against CL_KG hand curation across n=73 datasets stratified over 8 curation groups: mean Jaccard 0.81 (95% CI 0.75–0.87), recall 0.97, hit-rate 99 %, ~18× the random-pick null. See [agent_celltype_eval](https://github.com/Cellular-Semantics/agent_celltype_eval).
 
-**Open questions**:
-- How consistent is the column naming across datasets? (`author_cell_type` vs `cell_type_original` vs custom names)
-- What fraction of census datasets include author annotations?
-- Is the cell barcode / soma_joinid mapping stable enough for reliable joins?
+**Open questions from the original proposal — answered:**
+- *Column naming consistency*: Highly inconsistent (`BICCN_subclass_label`, `celltype`, `cell_type_fine`, `Cell.class`, `author_cell_type`, etc.). This is why an LLM picker is used rather than a fixed column-name lookup.
+- *Fraction of datasets with author annotations*: In the eval sample, only 1/73 datasets had no obvious author cell-type column.
+- *Barcode / soma_joinid mapping stability*: `observation_joinid` is stable across Census releases and present in both the source h5ad's obs and the Census obs — used directly as the join key.
+
+**Original proposals retained for reference:**
+1. ~~Targeted H5AD obs-only download~~ → superseded by HTTPS range-read above.
+2. gget meta_only — not pursued; the range-read path is lighter still.
+3. Pre-built author annotation index — orthogonal; complementary to the on-demand path for hot queries.
+4. Lobby for census schema change — still desirable long-term.
 
 ### Semantic query understanding
 

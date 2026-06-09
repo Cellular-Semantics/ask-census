@@ -116,6 +116,10 @@ Stop relaxing once you find a combination with >0 cells. Present the user with a
 - **Always filter zero-count categories** in any breakdown or summary (see Step 5 warning).
 - **Size warning**: If broad `get_anndata()` with no gene filter, warn the user. Suggest `get_obs()` first.
 
+### Step 7: Offer author-annotation enrichment (post-query)
+
+When the result contains `dataset_id`s and the user asks for author labels, marker-encoded cluster names, "the original annotations", or cell-type granularity beyond CL, suggest the `author-annotations` skill — it retrieves dataset-specific author cell-type columns from each source h5ad via cheap HTTPS range-reads and emits a long-format Parquet table (and optionally augments the h5ad in place). Do **not** auto-invoke.
+
 Always list resolved terms in output:
 ```
 Resolved terms:
