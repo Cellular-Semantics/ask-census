@@ -1,0 +1,1 @@
+{"picks": ["cellular_classification"], "reasoning": "The 'cellular_classification' column contains author-provided pancreatic cell-type labels (alpha, beta, delta, duct, endothelial, unclear) that are the original annotations from Muraro et al. 2016, distinct from the CELLxGENE-standardised cell_type field."}

@@ -1,0 +1,1 @@
+{"picks": ["BICCN_class_label", "BICCN_cluster_label"], "reasoning": "BICCN_class_label contains broad cell-type labels (Inhibitory/Excitatory) and BICCN_cluster_label contains finer author-assigned cluster names (Vip, L2/3, L4, etc.); BICCN_ontology_term_id is a non-CL ontology ID column, not a label column."}
