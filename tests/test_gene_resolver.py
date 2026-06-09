@@ -1,20 +1,21 @@
 """Tests for the gene_resolver module."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from gene_resolver import (
     GeneDict,
     GeneMatch,
+    _get_gene_dict,
     build_var_value_filter,
     resolve_genes,
-    _get_gene_dict,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def clear_gene_dict_cache():
@@ -58,10 +59,13 @@ def sample_gene_dict():
 # build_var_value_filter
 # ---------------------------------------------------------------------------
 
+
 class TestBuildVarValueFilter:
     def test_single_id(self):
-        assert build_var_value_filter(["ENSG00000141510"]) == \
-            "feature_id in ['ENSG00000141510']"
+        assert (
+            build_var_value_filter(["ENSG00000141510"])
+            == "feature_id in ['ENSG00000141510']"
+        )
 
     def test_multiple_ids_sorted(self):
         result = build_var_value_filter(["ENSG00000012048", "ENSG00000141510"])
@@ -78,6 +82,7 @@ class TestBuildVarValueFilter:
 # ---------------------------------------------------------------------------
 # resolve_genes
 # ---------------------------------------------------------------------------
+
 
 class TestResolveGenes:
     def test_unambiguous_name(self, sample_gene_dict):
