@@ -12,17 +12,20 @@ Vendored from https://github.com/Cellular-Semantics/agent_celltype_eval
 patch: byte counting is done by attaching a per-call counter to the open
 HTTPFile via _fetch_range wrapping.
 """
+
 from __future__ import annotations
 
+import threading
 import time
-from typing import Any, Dict, Optional
+import warnings
+from typing import Any
 
 import fsspec
 import h5py
 from fsspec.implementations.http import HTTPFile
 
 
-def describe_column(node: Any) -> Dict[str, Any]:
+def describe_column(node: Any) -> dict[str, Any]:
     """Return a schema descriptor for an obs column (no data read).
 
     AnnData encodes a categorical column as an HDF5 *group* with `codes` +
@@ -78,12 +81,13 @@ def head_sample(node: Any, n: int = 20):
         return f"ERR: {e}"
 
 
+_PATCH_LOCK = threading.Lock()
 _PATCH_LOCK_HOLDERS = 0
 _PATCH_ORIG = None
 _PATCH_STATS_STACK: list = []
 
 
-def _push_byte_counter(stats: Dict[str, int]) -> None:
+def _push_byte_counter(stats: dict[str, int]) -> None:
     """Class-level monkey-patch of HTTPFile._fetch_range that updates `stats`.
 
     fsspec drives reads through an asyncio loop and looks up `_fetch_range`
@@ -92,32 +96,34 @@ def _push_byte_counter(stats: Dict[str, int]) -> None:
     active counters to support nested / concurrent probes.
     """
     global _PATCH_LOCK_HOLDERS, _PATCH_ORIG
-    _PATCH_STATS_STACK.append(stats)
-    if _PATCH_LOCK_HOLDERS == 0:
-        _PATCH_ORIG = HTTPFile._fetch_range
+    with _PATCH_LOCK:
+        _PATCH_STATS_STACK.append(stats)
+        if _PATCH_LOCK_HOLDERS == 0:
+            _PATCH_ORIG = HTTPFile._fetch_range
 
-        def counting(self, start, end, *args, **kwargs):
-            data = _PATCH_ORIG(self, start, end, *args, **kwargs)
-            for s in _PATCH_STATS_STACK:
-                s["n"] += len(data)
-                s["calls"] += 1
-            return data
+            def counting(self, start, end, *args, **kwargs):
+                data = _PATCH_ORIG(self, start, end, *args, **kwargs)
+                for s in _PATCH_STATS_STACK:
+                    s["n"] += len(data)
+                    s["calls"] += 1
+                return data
 
-        HTTPFile._fetch_range = counting  # type: ignore[method-assign]
-    _PATCH_LOCK_HOLDERS += 1
+            HTTPFile._fetch_range = counting  # type: ignore[method-assign]
+        _PATCH_LOCK_HOLDERS += 1
 
 
-def _pop_byte_counter(stats: Dict[str, int]) -> None:
+def _pop_byte_counter(stats: dict[str, int]) -> None:
     global _PATCH_LOCK_HOLDERS, _PATCH_ORIG
-    if stats in _PATCH_STATS_STACK:
-        _PATCH_STATS_STACK.remove(stats)
-    _PATCH_LOCK_HOLDERS -= 1
-    if _PATCH_LOCK_HOLDERS == 0 and _PATCH_ORIG is not None:
-        HTTPFile._fetch_range = _PATCH_ORIG  # type: ignore[method-assign]
-        _PATCH_ORIG = None
+    with _PATCH_LOCK:
+        if stats in _PATCH_STATS_STACK:
+            _PATCH_STATS_STACK.remove(stats)
+        _PATCH_LOCK_HOLDERS -= 1
+        if _PATCH_LOCK_HOLDERS == 0 and _PATCH_ORIG is not None:
+            HTTPFile._fetch_range = _PATCH_ORIG  # type: ignore[method-assign]
+            _PATCH_ORIG = None
 
 
-def probe(url: str, stats: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+def probe(url: str, stats: dict[str, int] | None = None) -> dict[str, Any]:
     """Probe a remote h5ad's obs schema + samples via HTTPS range-read.
 
     Parameters
@@ -150,13 +156,14 @@ def probe(url: str, stats: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
                         "probe_time_s": round(time.time() - t0, 2),
                     }
                 obs = h["obs"]
-                schema: Dict[str, Any] = {}
-                samples: Dict[str, Any] = {}
+                schema: dict[str, Any] = {}
+                samples: dict[str, Any] = {}
                 for k in obs.keys():
                     try:
                         schema[k] = describe_column(obs[k])
                         samples[k] = head_sample(obs[k])
                     except Exception as e:
+                        warnings.warn(f"[probe] {k}: {e}", RuntimeWarning)
                         schema[k] = {"kind": "ERR", "error": str(e)}
                         samples[k] = f"ERR: {e}"
                 n_cells = (

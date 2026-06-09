@@ -91,7 +91,7 @@ from author_annotations import augment_h5ad
 augment_h5ad("outputs/<file>.h5ad", per_dataset)
 ```
 
-This adds `author_<column>` fields to `adata.obs`, joined on `observation_joinid`. Cells from datasets where no author cell-type column was picked receive NaN — cell count is unchanged.
+This adds `author__<column>` fields to `adata.obs`, joined on `observation_joinid`. The double-underscore separator avoids ambiguity when the source column is already prefixed with `author_` (e.g. `author_cell_type` → `author__author_cell_type`). Cells from datasets where no author cell-type column was picked receive NaN — cell count is unchanged.
 
 ### Step 6: Report to the user
 

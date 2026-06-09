@@ -4,12 +4,13 @@ Vendored verbatim (minus the file-writing wrapper) from
 agent_celltype_eval/src/03_make_prompts.py — see the eval repo for the
 benchmark this prompt was tuned against (n=73, Jaccard 0.81 against CL_KG).
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 
-def build_prompt(dataset_id: str, probe_entry: Dict[str, Any]) -> str:
+def build_prompt(dataset_id: str, probe_entry: dict[str, Any]) -> str:
     """Build the picker prompt for one dataset.
 
     Parameters
@@ -85,6 +86,8 @@ def build_prompt(dataset_id: str, probe_entry: Dict[str, Any]) -> str:
         "OUTPUT FORMAT: return ONLY a JSON object on a single line, no prose, "
         "no markdown:"
     )
-    lines.append('  {"picks": ["col1", "col2"], "reasoning": "one-sentence justification"}')
+    lines.append(
+        '  {"picks": ["col1", "col2"], "reasoning": "one-sentence justification"}'
+    )
     lines.append("If no valid columns, picks should be [].")
     return "\n".join(lines)

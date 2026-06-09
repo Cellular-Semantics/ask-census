@@ -4,6 +4,7 @@ Covers probe -> build_prompt -> pull_full_column -> to_long_table -> augment_h5a
 without any network access. The picker sub-agent step is not exercised (it lives
 outside Python — it's a Claude Code Task invocation).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +22,6 @@ from author_annotations import (
 )
 from author_annotations.cache import is_fresh, schema_hash
 
-
 # ---------------------------------------------------------------------------
 # Fixture: tiny synthetic AnnData written as h5ad. Shape mirrors a Census-
 # derived source h5ad: standardised cell_type, an author cell-type column
@@ -29,6 +29,7 @@ from author_annotations.cache import is_fresh, schema_hash
 # columns. AnnData writes categoricals as HDF5 groups with codes+categories,
 # matching the structure probe() decodes.
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def synthetic_h5ad(tmp_path: Path) -> Path:
@@ -39,12 +40,32 @@ def synthetic_h5ad(tmp_path: Path) -> Path:
         {
             "observation_joinid": [f"J{i:03d}" for i in range(n)],
             "cell_type": pd.Categorical(
-                ["T cell", "B cell", "NK cell", "T cell", "B cell",
-                 "T cell", "monocyte", "monocyte", "T cell", "B cell"]
+                [
+                    "T cell",
+                    "B cell",
+                    "NK cell",
+                    "T cell",
+                    "B cell",
+                    "T cell",
+                    "monocyte",
+                    "monocyte",
+                    "T cell",
+                    "B cell",
+                ]
             ),
             "author_cell_type": pd.Categorical(
-                ["CD4-naive", "B-mem", "NK-bright", "CD4-EM", "B-naive",
-                 "CD8-EM", "cMono", "ncMono", "CD8-CM", "B-mem"]
+                [
+                    "CD4-naive",
+                    "B-mem",
+                    "NK-bright",
+                    "CD4-EM",
+                    "B-naive",
+                    "CD8-EM",
+                    "cMono",
+                    "ncMono",
+                    "CD8-CM",
+                    "B-mem",
+                ]
             ),
             "broad_celltype": pd.Categorical(
                 ["T", "B", "NK", "T", "B", "T", "Mono", "Mono", "T", "B"]
@@ -66,6 +87,7 @@ def synthetic_h5ad(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 # probe()
 # ---------------------------------------------------------------------------
+
 
 def test_probe_recovers_schema_and_samples(synthetic_h5ad: Path):
     url = f"file://{synthetic_h5ad}"
@@ -93,7 +115,11 @@ def test_probe_recovers_schema_and_samples(synthetic_h5ad: Path):
     assert ct["kind"] == "categorical"
     assert ct["n_categories"] == 9  # 10 cells, B-mem appears twice
     # The 20-row head sample should pull (and decode) values
-    assert result["samples"]["author_cell_type"][:3] == ["CD4-naive", "B-mem", "NK-bright"]
+    assert result["samples"]["author_cell_type"][:3] == [
+        "CD4-naive",
+        "B-mem",
+        "NK-bright",
+    ]
 
     # Numeric column is an array, not a categorical
     assert result["schema"]["n_counts"]["kind"] == "array"
@@ -102,6 +128,7 @@ def test_probe_recovers_schema_and_samples(synthetic_h5ad: Path):
 # ---------------------------------------------------------------------------
 # build_prompt()
 # ---------------------------------------------------------------------------
+
 
 def test_build_prompt_lists_columns_with_samples(synthetic_h5ad: Path):
     result = probe(f"file://{synthetic_h5ad}")
@@ -120,6 +147,7 @@ def test_build_prompt_lists_columns_with_samples(synthetic_h5ad: Path):
 # ---------------------------------------------------------------------------
 # pull_full_column()
 # ---------------------------------------------------------------------------
+
 
 def test_pull_full_column_returns_joinids_and_values(synthetic_h5ad: Path):
     url = f"file://{synthetic_h5ad}"
@@ -140,6 +168,7 @@ def test_pull_full_column_returns_joinids_and_values(synthetic_h5ad: Path):
 # to_long_table()
 # ---------------------------------------------------------------------------
 
+
 def test_to_long_table_emits_canonical_schema():
     per_dataset = {
         "ds1": {
@@ -155,7 +184,12 @@ def test_to_long_table_emits_canonical_schema():
         },
     }
     df = to_long_table(per_dataset)
-    assert list(df.columns) == ["observation_joinid", "dataset_id", "author_column", "value"]
+    assert list(df.columns) == [
+        "observation_joinid",
+        "dataset_id",
+        "author_column",
+        "value",
+    ]
     assert len(df) == 8  # 3*2 + 2*1
     # Per-cell, per-column entries are correct
     row = df[(df.dataset_id == "ds1") & (df.observation_joinid == "B")]
@@ -182,6 +216,7 @@ def test_to_long_table_drops_missing_values():
 # augment_h5ad()
 # ---------------------------------------------------------------------------
 
+
 def test_augment_h5ad_adds_author_columns_in_place(synthetic_h5ad: Path):
     import anndata as ad
 
@@ -199,18 +234,23 @@ def test_augment_h5ad_adds_author_columns_in_place(synthetic_h5ad: Path):
     # Re-open and inspect — cell count preserved, new column added with prefix
     after = ad.read_h5ad(synthetic_h5ad)
     assert after.n_obs == 10
-    assert "author_author_cell_type" in after.obs.columns
+    assert "author__author_cell_type" in after.obs.columns
     # Values joined correctly on observation_joinid
     after.obs["observation_joinid"] = after.obs["observation_joinid"].astype(str)
-    paired = dict(zip(after.obs["observation_joinid"], after.obs["author_author_cell_type"]))
+    paired = dict(
+        zip(after.obs["observation_joinid"], after.obs["author__author_cell_type"])
+    )
     assert paired["J000"] == "CD4-naive"
     assert paired["J007"] == "ncMono"
 
 
-def test_augment_h5ad_tolerates_cells_with_no_pick(synthetic_h5ad: Path, tmp_path: Path):
+def test_augment_h5ad_tolerates_cells_with_no_pick(
+    synthetic_h5ad: Path, tmp_path: Path
+):
     """Cells whose dataset has no author column should get NaN, not be dropped."""
-    import anndata as ad
     import shutil
+
+    import anndata as ad
 
     h5_copy = tmp_path / "to_augment.h5ad"
     shutil.copy(synthetic_h5ad, h5_copy)
@@ -230,14 +270,15 @@ def test_augment_h5ad_tolerates_cells_with_no_pick(synthetic_h5ad: Path, tmp_pat
     obs = after.obs.copy()
     obs["observation_joinid"] = obs["observation_joinid"].astype(str)
     obs = obs.set_index("observation_joinid")
-    assert obs.loc["J000", "author_author_cell_type"] == "alpha"
-    assert obs.loc["J001", "author_author_cell_type"] == "beta"
-    assert pd.isna(obs.loc["J005", "author_author_cell_type"])  # untouched cell
+    assert obs.loc["J000", "author__author_cell_type"] == "alpha"
+    assert obs.loc["J001", "author__author_cell_type"] == "beta"
+    assert pd.isna(obs.loc["J005", "author__author_cell_type"])  # untouched cell
 
 
 # ---------------------------------------------------------------------------
 # cache utilities — pure, no IO needed for the freshness check
 # ---------------------------------------------------------------------------
+
 
 def test_schema_hash_is_order_independent():
     a = schema_hash(["b", "a", "c"])
@@ -257,3 +298,24 @@ def test_is_fresh_checks_schema_and_version():
     assert not is_fresh(entry, ["a", "b"], "2026-06-01")  # version drift
     # census_version=None means caller doesn't care; only schema matters
     assert is_fresh(entry, ["a", "b"], None)
+
+
+def test_is_fresh_checks_picks_when_supplied():
+    entry = {
+        "schema_hash": schema_hash(["a", "b"]),
+        "census_version": "2026-05-25",
+        "picks": {"picks": ["col1", "col2"], "reasoning": "test"},
+    }
+    # Same picks (order-independent) → fresh
+    assert is_fresh(entry, ["a", "b"], "2026-05-25", picks=["col2", "col1"])
+    # Different picks → stale
+    assert not is_fresh(entry, ["a", "b"], "2026-05-25", picks=["col1"])
+    assert not is_fresh(entry, ["a", "b"], "2026-05-25", picks=["col1", "col2", "col3"])
+    # picks=None → not checked (probe-only cache entries)
+    assert is_fresh(entry, ["a", "b"], "2026-05-25", picks=None)
+    # Entry with no picks field → stale when picks are expected
+    entry_no_picks = {
+        "schema_hash": schema_hash(["a", "b"]),
+        "census_version": "2026-05-25",
+    }
+    assert not is_fresh(entry_no_picks, ["a", "b"], "2026-05-25", picks=["col1"])

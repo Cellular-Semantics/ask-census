@@ -16,12 +16,15 @@ Cache helpers:
     cache_path(dataset_id) -> Path
     load_cache(dataset_id) -> dict | None
     save_cache(dataset_id, entry) -> None
+    schema_hash(schema_keys) -> str
+    is_fresh(entry, schema_keys, census_version, picks=None) -> bool
 """
-from .probe import probe, describe_column, head_sample
+
+from .assemble import augment_h5ad, to_long_table
+from .cache import cache_path, is_fresh, load_cache, save_cache, schema_hash
+from .probe import describe_column, head_sample, probe
 from .prompt import build_prompt
 from .pull import pull_full_column
-from .assemble import to_long_table, augment_h5ad
-from .cache import cache_path, load_cache, save_cache
 
 __all__ = [
     "probe",
@@ -34,4 +37,6 @@ __all__ = [
     "cache_path",
     "load_cache",
     "save_cache",
+    "schema_hash",
+    "is_fresh",
 ]

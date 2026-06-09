@@ -7,28 +7,26 @@ reads the whole dataset instead of a 20-row head.
 A full obs column for a 1M-cell dataset is typically a few MB on the wire;
 the categorical case (codes + categories table) is cheaper still.
 """
+
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Tuple
+import warnings
+from collections.abc import Iterable
 
 import fsspec
 import h5py
 import numpy as np
 
-from .probe import _push_byte_counter, _pop_byte_counter
+from .probe import _pop_byte_counter, _push_byte_counter
 
 
 def _decode_array(node: h5py.Dataset) -> np.ndarray:
     """Read a non-categorical obs dataset in full, decoding bytes to str."""
     data = node[:]
     if data.dtype.kind in ("S", "O"):  # bytes / object (string)
-        out = np.empty(len(data), dtype=object)
-        for i, v in enumerate(data):
-            if isinstance(v, bytes):
-                out[i] = v.decode(errors="replace")
-            else:
-                out[i] = v
-        return out
+        return np.frompyfunc(
+            lambda v: v.decode(errors="replace") if isinstance(v, bytes) else v, 1, 1
+        )(data).astype(object)
     return data
 
 
@@ -50,8 +48,8 @@ def _decode_categorical(group: h5py.Group) -> np.ndarray:
 def pull_full_column(
     url: str,
     column_names: Iterable[str],
-    stats: Optional[Dict[str, int]] = None,
-) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+    stats: dict[str, int] | None = None,
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     """Pull observation_joinid and one-or-more full obs columns from a remote h5ad.
 
     Parameters
@@ -67,7 +65,7 @@ def pull_full_column(
         joinids   : ndarray of observation_joinid strings, shape (n_cells,)
         columns   : dict {column_name: ndarray(n_cells,) of decoded values}.
                     Columns that don't exist or fail to decode are returned
-                    as None (with a warning to stderr).
+                    as None (with a RuntimeWarning).
     """
     if stats is None:
         stats = {}
@@ -75,7 +73,7 @@ def pull_full_column(
     stats["calls"] = 0
 
     fs, path = fsspec.core.url_to_fs(url)
-    cols: Dict[str, np.ndarray] = {}
+    cols: dict[str, np.ndarray] = {}
 
     _push_byte_counter(stats)
     try:
@@ -96,8 +94,7 @@ def pull_full_column(
                         else:
                             cols[col] = _decode_array(node)
                     except Exception as e:
-                        import sys
-                        sys.stderr.write(f"[pull] {col}: {e}\n")
+                        warnings.warn(f"[pull] {col}: {e}", RuntimeWarning)
                         cols[col] = None  # type: ignore[assignment]
     finally:
         _pop_byte_counter(stats)

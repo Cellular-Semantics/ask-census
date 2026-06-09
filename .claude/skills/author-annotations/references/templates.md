@@ -89,7 +89,7 @@ for dsid in dataset_ids:
 augment_h5ad(H5AD_PATH, per_dataset)
 ```
 
-After augment, the h5ad's `obs` has new `author_<col>` columns for any cell whose source h5ad had an author cell-type column picked. Cells from datasets without picks remain NaN in those columns.
+After augment, the h5ad's `obs` has new `author__<col>` columns for any cell whose source h5ad had an author cell-type column picked. Cells from datasets without picks remain NaN in those columns.
 
 ---
 
@@ -108,7 +108,7 @@ long = to_long_table(per_dataset)
 # Wide-pivot the author columns for an obs-style flat table
 wide = long.pivot_table(index="observation_joinid", columns="author_column",
                         values="value", aggfunc="first")
-wide.columns = [f"author_{c}" for c in wide.columns]
+wide.columns = [f"author__{c}" for c in wide.columns]
 merged = obs.merge(wide, how="left", left_on="observation_joinid", right_index=True)
 merged.to_parquet("outputs/lung_Tcell_20260525_120000_with_author.parquet", index=False)
 ```

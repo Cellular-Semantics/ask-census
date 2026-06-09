@@ -11,12 +11,12 @@ Augment-h5ad path:
     joining on `observation_joinid`. Cells whose dataset has no author pick
     receive NaN — cell count is unchanged.
 """
+
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping
 
-import numpy as np
 import pandas as pd
 
 # Per-dataset author-column pull result shape:
@@ -31,7 +31,7 @@ def to_long_table(per_dataset: PerDataset) -> pd.DataFrame:
     Returns a DataFrame with columns:
         observation_joinid, dataset_id, author_column, value
     """
-    frames: List[pd.DataFrame] = []
+    frames: list[pd.DataFrame] = []
     for dsid, payload in per_dataset.items():
         joinids = payload.get("joinids")  # type: ignore[assignment]
         columns = payload.get("columns") or {}  # type: ignore[assignment]
@@ -65,7 +65,7 @@ def to_long_table(per_dataset: PerDataset) -> pd.DataFrame:
 def augment_h5ad(h5ad_path: str | Path, per_dataset: PerDataset) -> None:
     """Add picked author columns to an existing h5ad's obs in-place.
 
-    Each picked column becomes ``author_<col_name>`` in ``adata.obs``,
+    Each picked column becomes ``author__<col_name>`` in ``adata.obs``,
     joined on ``observation_joinid``. Cells from datasets without a pick
     receive NaN.
 
@@ -73,14 +73,21 @@ def augment_h5ad(h5ad_path: str | Path, per_dataset: PerDataset) -> None:
     is for any Census-derived AnnData).
     """
     import anndata  # noqa: WPS433 — heavy import deferred
+    import h5py
+    from anndata._io.specs import write_elem
 
     h5ad_path = Path(h5ad_path)
-    adata = anndata.read_h5ad(h5ad_path)
+
+    # backed='r' memory-maps X instead of loading it — obs is read normally.
+    adata = anndata.read_h5ad(h5ad_path, backed="r")
     if "observation_joinid" not in adata.obs.columns:
+        adata.file.close()
         raise ValueError(
             f"{h5ad_path}: obs has no observation_joinid; cannot join author "
             "annotations."
         )
+    obs = adata.obs.copy()
+    adata.file.close()  # release before re-opening r+
 
     # Build a long table indexed by observation_joinid for fast lookup.
     long = to_long_table(per_dataset)
@@ -97,12 +104,19 @@ def augment_h5ad(h5ad_path: str | Path, per_dataset: PerDataset) -> None:
         values="value",
         aggfunc="first",
     )
-    wide.columns = [f"author_{c}" for c in wide.columns]
+    wide.columns = [f"author__{c}" for c in wide.columns]
 
     # Left-join into obs on observation_joinid.
-    obs = adata.obs.copy()
     obs["observation_joinid"] = obs["observation_joinid"].astype(str)
     obs = obs.merge(wide, how="left", left_on="observation_joinid", right_index=True)
-    adata.obs = obs
 
-    adata.write_h5ad(h5ad_path)
+    # The left-merge leaves unmatched cells as float NaN in the new columns.
+    # h5py's vlen-string writer rejects float NaN; pd.Categorical encodes
+    # missing values as code -1, which write_elem serialises correctly.
+    for col in wide.columns:
+        obs[col] = pd.Categorical(obs[col])
+
+    # Rewrite only /obs — X and all other HDF5 groups are left untouched.
+    with h5py.File(h5ad_path, "r+") as f:
+        del f["obs"]
+        write_elem(f, "obs", obs)
